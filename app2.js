@@ -1,13 +1,12 @@
-//Make requestAnimFrame cross browser
 var requestAnimFrame = (function(){
-    return window.requestAnimationFrame       ||
-        window.webkitRequestAnimationFrame ||
-        window.mozRequestAnimationFrame    ||
-        window.oRequestAnimationFrame      ||
-        window.msRequestAnimationFrame     ||
-        function(callback){
-            window.setTimeout(callback, 1000 / 60);
-        };
+  return window.requestAnimationFrame       ||
+      window.webkitRequestAnimationFrame ||
+      window.mozRequestAnimationFrame    ||
+      window.oRequestAnimationFrame      ||
+      window.msRequestAnimationFrame     ||
+      function(callback){
+          window.setTimeout(callback, 1000 / 60);
+      }
 })();
 
 //Set canvas
@@ -17,7 +16,7 @@ canvas.width = 512;
 canvas.height = 480;
 document.body.appendChild(canvas);
 
-//Set game loop
+//Game loop
 var lastTime;
 function main() {
   var now = Date.now();
@@ -38,11 +37,12 @@ function init() {
   main();
 }
 
-//Load all game sprites here
+//load assets
 resources.load([
   'img/terrain.png',
   'img/player.png',
-  'img/bricks2.png'
+  'img/bricks2.png',
+  'img/cursor.png'
 ]);
 resources.onReady(init);
 
@@ -51,23 +51,17 @@ var player = {
   pos: [0,0],
   sprite: new Sprite('img/player.png',[0,0],[24,30])
 };
-var blocks = [];
-
-//for (var i = 0; i < Math.floor(canvas.width / 16); i++) {
-//  blocks.push({
-//    pos: [i * 16,canvas.height - 16],
-//    sprite: new Sprite('img/bricks2.png',[0,0],[16,16])
-//  });
-//}
-
-var gravity = 0;
-
 var mouse = {
   x: 0,
-  y: 0
+  y: 0,
+  sprite: new Sprite('img/cursor.png',[0,0],[10,10])
 };
+var gravity = {
+  onGround: false,
+  timeOffGround: 0
+}
+var jump = false;
 
-var lastFire = Date.now();
 var gameTime = 0;
 var isGameOver;
 var terrainPattern;
@@ -77,23 +71,36 @@ var scoreEl = document.getElementById('score');
 
 var playerSpeed = 200; //px per sec
 
-//Update loop
+//update loop
 function update(dt) {
   gameTime += dt;
 
   handleInput(dt);
   updateEntities(dt);
-
-  checkCollisions();
+  //checkCollisions(); replaces with check checkPlayerBounds() for now
+  checkPlayerBounds();
+  //jump code
+  if (gravity.onGround === false) {
+    var a = gravity.timeOffGround;
+    var b = a + 1;
+    gravity.timeOffGround = b;
+    player.pos[1] = player.pos[1] + (gravity.timeOffGround / 9);
+  }
+  if (jump === true) {
+    player.pos[1] -= playerSpeed * dt;
+  }
+  if (gravity.onGround === true) {
+    jump = false;
+  }
 }
 
-//Handle player input
+//Player inputs
 function handleInput(dt) {
-  if(input.isDown('DOWN') || input.isDown('s')) {
+  if(input.isDown('DOWN') && gravity.onGround === true || input.isDown('s') && gravity.onGround === true) {
     player.pos[1] += playerSpeed * dt;
   }
-  if(input.isDown('UP') || input.isDown('w')) {
-    player.pos[1] -= playerSpeed * dt;
+  if(input.isDown('UP') && gravity.onGround === true || input.isDown('w') && gravity.onGround === true) {
+    jump = true;
   }
   if(input.isDown('LEFT') || input.isDown('a')) {
     player.pos[0] -= playerSpeed * dt;
@@ -108,8 +115,7 @@ function updateEntities(dt) {
   player.sprite.update(dt);
 }
 
-//deal with collisions
-
+//Collisions
 function collides(x, y, r, b, x2, y2, r2, b2) {
     return !(r <= x2 || x > r2 ||
              b <= y2 || y > b2);
@@ -122,21 +128,7 @@ function boxCollides(pos, size, pos2, size2) {
                     pos2[0] + size2[0], pos2[1] + size2[1]);
 }
 
-function checkCollisions() {
-  checkPlayerBounds();
-  //run detection for gems and the player
-  for (var i = 0; i < blocks.length; i++) {
-    var pos = blocks[i].pos;
-    var size = blocks[i].sprite.size;
-
-    if(boxCollides(pos,size,player.pos,player.sprite.size)) {
-      player.pos[1] = canvas.height - 46; //!THIS NEEDS TO CHANGE!
-    }else {
-      player.pos[1] = player.pos[1] + .09;//first attempt at gravity, need to impelement a 'time off ground function'
-    }
-  }
-}
-
+//Boundaries
 function checkPlayerBounds() {
   if(player.pos[0] < 0) {
     player.pos[0] = 0;
@@ -148,10 +140,30 @@ function checkPlayerBounds() {
     player.pos[1] = 0;
   }else if(player.pos[1] > canvas.height - player.sprite.size[1]) {
     player.pos[1] = canvas.height - player.sprite.size[1];
+
+    gravity.onGround = true;
+    gravity.timeOffGround = 0;
+  }
+  if (player.pos[1] < canvas.height - player.sprite.size[1]) {
+    gravity.onGround = false;
   }
 }
 
-//Have the canvas draw everything
+//RESOLVE Collisions
+//function checkCollisions() {
+//  checkPlayerBounds();
+//  for (var i = 0; i < blocks.length; i++) {
+//    var pos = blocks[i].pos;
+//    var size = blocks[i].sprite.size;
+//    if(boxCollides(pos,size,player.pos,player.sprite.size)) {
+//      player.pos[1] = canvas.height - 46;
+//    }else {
+//      player.pos[1] = player.pos[1] + .09;
+//    }
+//  }
+//}
+
+//DRAW EVERYTHING
 function render() {
   ctx.fillStyle = terrainPattern;
   ctx.fillRect(0,0,canvas.width,canvas.height);
@@ -159,15 +171,14 @@ function render() {
   if(!isGameOver) {
     renderEntity(player);
   }
-  renderEntities(blocks);
+  //renderEntity(mouse);
+  //Use renderEntities(); for multiput entities
 }
-
 function renderEntities(list) {
   for(var i = 0; i < list.length; i++) {
     renderEntity(list[i]);
   }
 }
-
 function renderEntity(entity) {
   ctx.save();
   ctx.translate(entity.pos[0], entity.pos[1]);
@@ -189,7 +200,8 @@ function reset() {
   gameTime = 0;
   score = 0;
 
-  gems = [];
-
   player.pos = [50, canvas.height / 2];
+
+  gravity.onGround = false;
+  gravity.timeOffGround = 0;
 }
